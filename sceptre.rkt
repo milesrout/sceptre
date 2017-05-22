@@ -3,15 +3,15 @@
 (require racket/trace)
 (require graph)
 
-(struct implication
-  (antecedent consequent)
-  #:transparent)
-(struct conjunction
-  (left right)
-  #:transparent)
-(struct disjunction
-  (left right)
-  #:transparent)
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;
+; Structs
+;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(struct implication (antecedent consequent)  #:transparent)
+(struct conjunction (left right) #:transparent)
+(struct disjunction (left right) #:transparent)
 
 ;  
 ;  A
@@ -29,7 +29,7 @@
 ; A->B
 ;
 (struct impl-intro
-  (formula consequent)
+  (a-formula b-proof)
   #:transparent)
 
 ;
@@ -38,7 +38,7 @@
 ;     B
 ;
 (struct impl-elim
-  (implication antecedent)
+  (a->b-proof a-proof)
   #:transparent)
 
 ;
@@ -47,7 +47,7 @@
 ;   A^B
 ;
 (struct conj-intro
-  (left-proof right-proof)
+  (a-proof b-proof)
   #:transparent)
 
 ;
@@ -56,7 +56,7 @@
 ;   A
 ;
 (struct conj-elim-l
-  (proof)
+  (ab-proof)
   #:transparent)
 
 ;
@@ -65,41 +65,42 @@
 ;   B
 ;
 (struct conj-elim-r
-  (proof)
+  (ab-proof)
   #:transparent)
 
 (struct disj-intro-l
-  (proof formula)
+  (l-proof r-formula)
   #:transparent)
 
 (struct disj-intro-r
-  (formula proof)
+  (l-formula r-proof)
   #:transparent)
 
 (struct disj-elim
   (avb-proof ac-proof bc-proof)
   #:transparent)
 
-(define (struct->list proof)
-  (cond [(struct? proof) (map struct->list (vector->list (struct->vector proof)))]
-        [(symbol? proof) (string->symbol (regexp-replace #rx"struct:" (symbol->string proof) ""))]
-        [else proof]))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;
+; Prover
+;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define (prove assumptions goal)
+  (struct->list (prove/up assumptions goal)))
 
 (define (prove/up assumptions goal)
   (match goal
-    [(? symbol?) (prove/up/prop assumptions goal)]
-    [(implication a c) (impl-intro a (prove (cons a assumptions) c))]
-    [(conjunction l r) (conj-intro (prove assumptions l) (prove assumptions r))]
+    [(? symbol?) (let ([alpha (amb assumptions)])
+                   (assert (positive? goal alpha))
+                   ((prove/down alpha assumptions goal) (assume alpha)))]
+    [(implication a c) (impl-intro a (prove/up (cons a assumptions) c))]
+    [(conjunction l r) (conj-intro (prove/up assumptions l) (prove/up assumptions r))]
     [(disjunction l r) (let* ([t (amb (list l r))]
                               [disj (if (eq? t l)
                                         (lambda (v) (disj-intro-l v r))
                                         (lambda (v) (disj-intro-r l v)))])
-                         (disj (prove assumptions t)))]))
-(define (prove assumptions goal)
-  (struct->list (prove/up assumptions goal)))
-
-(define (set-replace set old new)
-  (set-add (set-remove set old) new))
+                         (disj (prove/up assumptions t)))]))
 
 (define (negative? proposition formula)
   (match formula
@@ -121,11 +122,6 @@
     [(implication a c) (or (negative? proposition a)
                            (positive? proposition c))]))
 
-(define (prove/up/prop assumptions goal)
-  (define alpha (amb assumptions))
-  (assert (positive? goal alpha))
-  ((prove/down alpha assumptions goal) (assume alpha)))
-
 (define (prove/down formula assumptions goal)
   (match formula
     [(? symbol?) (if (eq? formula goal)
@@ -145,8 +141,18 @@
                        (lambda (d)
                          (disj-elim d d1 d2))]))
 
-(trace prove/up)
-(trace prove/down)
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;
+; Utilities
+;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; (disjunction 'a (implication 'a 'b))
+;   --> '(disjunction a (implication a b))
+(define (struct->list s)
+  (cond [(struct? s) (map struct->list (vector->list (struct->vector s)))]
+        [(symbol? s) (string->symbol (regexp-replace #rx"struct:" (symbol->string s) ""))]
+        [else s]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;
@@ -183,6 +189,10 @@
       (fail)
       #t))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;
+; Examples
+;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define conj-commutes (prove (list (conjunction 'a (conjunction 'b 'c))) (conjunction (conjunction 'a 'b) 'c)))
