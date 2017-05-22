@@ -3,43 +3,6 @@
 (require racket/trace)
 (require graph)
 
-; current-continuation : -> continuation
-(define (current-continuation) 
-  (call-with-current-continuation 
-   (lambda (cc)
-     (cc cc))))
-
-; fail-stack : list[continuation]
-(define fail-stack '())
-
-; fail : -> ...
-(define (fail)
-  (if (not (pair? fail-stack))
-      (error "back-tracking stack exhausted!")
-      (begin
-        (let ((back-track-point (car fail-stack)))
-          (set! fail-stack (cdr fail-stack))
-          (back-track-point back-track-point)))))
-
-; amb : list[a] -> a
-(define (amb choices)
-  (let ((cc (current-continuation)))
-    (cond
-      ((null? choices)      (fail))
-      ((pair? choices)      (let ((choice (car choices)))
-                              (set! choices (cdr choices))
-                              (set! fail-stack (cons cc fail-stack))
-                              choice)))))
-
-; (assert condition) will cause
-; condition to be true, and if there
-; is no way to make it true, then
-; it signals and error in the program.
-(define (assert condition)
-  (if (not condition)
-      (fail)
-      #t))
-
 (struct implication
   (antecedent consequent)
   #:transparent)
@@ -184,6 +147,43 @@
 
 (trace prove/up)
 (trace prove/down)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;
+; I didn't write (amb). This implementation is from here:
+; http://matt.might.net/articles/programming-with-continuations--exceptions-backtracking-search-threads-generators-coroutines/
+; (the idea is far, far older)
+
+(define (current-continuation)
+  (call-with-current-continuation
+   (lambda (cc)
+     (cc cc))))
+
+(define fail-stack '())
+
+(define (fail)
+  (if (not (pair? fail-stack))
+      (error "back-tracking stack exhausted!")
+      (begin
+        (let ((back-track-point (car fail-stack)))
+          (set! fail-stack (cdr fail-stack))
+          (back-track-point back-track-point)))))
+
+(define (amb choices)
+  (let ((cc (current-continuation)))
+    (cond
+      ((null? choices)      (fail))
+      ((pair? choices)      (let ((choice (car choices)))
+                              (set! choices (cdr choices))
+                              (set! fail-stack (cons cc fail-stack))
+                              choice)))))
+
+(define (assert condition)
+  (if (not condition)
+      (fail)
+      #t))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define conj-commutes (prove (list (conjunction 'a (conjunction 'b 'c))) (conjunction (conjunction 'a 'b) 'c)))
 (define conj-identity (prove (list (conjunction 'a 'b)) (conjunction 'a 'b)))
