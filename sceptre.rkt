@@ -9,7 +9,7 @@
 ;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(struct implication (antecedent consequent)  #:transparent)
+(struct implication (antecedent consequent) #:transparent)
 (struct conjunction (left right) #:transparent)
 (struct disjunction (left right) #:transparent)
 
@@ -102,26 +102,6 @@
                                         (lambda (v) (disj-intro-r l v)))])
                          (disj (prove/up assumptions t)))]))
 
-(define (negative? proposition formula)
-  (match formula
-    [(? symbol?)       (eq? proposition formula)]
-    [(conjunction l r) (or (negative? proposition l)
-                           (negative? proposition r))]
-    [(disjunction l r) (or (negative? proposition l)
-                           (negative? proposition r))]
-    [(implication a c) (or (positive? proposition a)
-                           (negative? proposition c))]))
-
-(define (positive? proposition formula)
-  (match formula
-    [(? symbol?)       (eq? proposition formula)]
-    [(conjunction l r) (or (positive? proposition l)
-                           (positive? proposition r))]
-    [(disjunction l r) (or (positive? proposition l)
-                           (positive? proposition r))]
-    [(implication a c) (or (negative? proposition a)
-                           (positive? proposition c))]))
-
 (define (prove/down formula assumptions goal)
   (match formula
     [(? symbol?) (if (eq? formula goal)
@@ -140,6 +120,27 @@
                        (define d2 (prove/up (set-add assumptions r) goal))
                        (lambda (d)
                          (disj-elim d d1 d2))]))
+
+(define (negative? proposition formula)
+  (match formula
+    [(? symbol?) #f]
+    [(conjunction l r) (or (negative? proposition l)
+                           (negative? proposition r))]
+    [(disjunction l r) (or (negative? proposition l)
+                           (negative? proposition r))]
+    [(implication a c) (or (positive? proposition a)
+                           (negative? proposition c))]))
+
+(define (positive? proposition formula)
+  (or (eq? proposition formula)
+      (match formula
+        [(? symbol?)       (eq? proposition formula)]
+        [(conjunction l r) (or (positive? proposition l)
+                               (positive? proposition r))]
+        [(disjunction l r) (or (positive? proposition l)
+                               (positive? proposition r))]
+        [(implication a c) (or (negative? proposition a)
+                               (positive? proposition c))])))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;
@@ -195,28 +196,31 @@
 ;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define conj-commutes (prove (list (conjunction 'a (conjunction 'b 'c))) (conjunction (conjunction 'a 'b) 'c)))
-(define conj-identity (prove (list (conjunction 'a 'b)) (conjunction 'a 'b)))
-(define currying (prove (list (implication (conjunction 'a 'b) 'c)) (implication 'a (implication 'b 'c))))
-(define reverse-currying (prove (list (implication 'a (implication 'b 'c))) (implication (conjunction 'a 'b) 'c)))
+(trace prove)
+(trace prove/up)
+(trace prove/down)
 
-(define conj-test-a (prove (list (conjunction 'a (conjunction 'b 'c))) 'a))
-(define conj-test-b (prove (list (conjunction 'a (conjunction 'b 'c))) 'b))
-(define conj-test-c (prove (list (conjunction 'a (conjunction 'b 'c))) 'c))
+;(define conj-commutes (prove (list (conjunction 'a (conjunction 'b 'c))) (conjunction (conjunction 'a 'b) 'c)))
+;(define conj-identity (prove (list (conjunction 'a 'b)) (conjunction 'a 'b)))
+;(define currying (prove (list (implication (conjunction 'a 'b) 'c)) (implication 'a (implication 'b 'c))))
+;(define reverse-currying (prove (list (implication 'a (implication 'b 'c))) (implication (conjunction 'a 'b) 'c)))
 
-(define disj-test-1 (prove (list 'a) (disjunction 'a 'b)))
+;(define conj-test-a (prove (list (conjunction 'a (conjunction 'b 'c))) 'a))
+;(define conj-test-b (prove (list (conjunction 'a (conjunction 'b 'c))) 'b))
+;(define conj-test-c (prove (list (conjunction 'a (conjunction 'b 'c))) 'c))
 
-(define dne-a ((('a . implication . 'b) . implication . 'b) . implication . 'a))
-(define p6-a ((('a . implication . ('a . implication . 'b)) . implication . 'b) . implication . 'a))
-;(prove (list p6-a) dne-a)
-;(prove (list dne-a) p6-a)
+;(define disj-test-1 (prove (list 'a) (disjunction 'a 'b)))
 
-(define p8-a (implication (implication (implication 'a 'b) 'a) 'a))
-(define lem-a (disjunction 'a (implication 'a 'b)))
-;(prove (list p8-a) lem-a)
-;(prove (list lem-a) p8-a)
+(define (dne f) (((implication (implication (implication f 'bot) 'bot) f))))
+(define (p6 f) (implication (implication (implication f (implication f 'bot)) 'bot) f))
+
+(define (p8 f) (implication (implication (implication f 'bot) f) f))
+(define (lem f) (disjunction f (implication f 'bot)))
+
+;(prove (list (lem 'a)) (p8 'a))
+(prove (list (p8 (lem 'a))) (lem 'a))
 
 (define (nd-graph proof)
   (unweighted-graph/directed '()))
 
-(nd-graph conj-test-a)
+;(nd-graph conj-test-a)
