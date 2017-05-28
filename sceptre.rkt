@@ -87,22 +87,56 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define (prove assumptions goal)
-  (struct->list (prove/up assumptions goal)))
+  (parameterize ([fail-stack '()]
+                 [prove/up-cache (make-hash)]
+                 [prove/down-cache (make-hash)])
+    (struct->list (prove/up assumptions goal))))
+
+(define prove/up-cache
+  (make-parameter #f))
+
+(define prove/down-cache
+  (make-parameter #f))
 
 (define (prove/up assumptions goal)
-  (match goal
-    [(? symbol?) (let ([alpha (amb assumptions)])
-                   (assert (positive? goal alpha))
-                   ((prove/down alpha assumptions goal) (assume alpha)))]
-    [(implication a c) (impl-intro a (prove/up (cons a assumptions) c))]
-    [(conjunction l r) (conj-intro (prove/up assumptions l) (prove/up assumptions r))]
-    [(disjunction l r) (let* ([t (amb (list l r))]
-                              [disj (if (eq? t l)
-                                        (lambda (v) (disj-intro-l v r))
-                                        (lambda (v) (disj-intro-r l v)))])
-                         (disj (prove/up assumptions t)))]))
+  (define key (list assumptions goal))
+  (define cached (hash-ref (prove/up-cache) key 'nothing))
+  (match cached
+    ['in-progress (fail)]
+    [`(done ,v) v]
+    ['nothing (begin
+                (hash-set! (prove/up-cache) key 'in-progress)
+                (define result (%prove/up assumptions goal))
+                (hash-set! (prove/up-cache) key `(done ,result))
+                result)]))
 
 (define (prove/down formula assumptions goal)
+  (define key (list formula assumptions goal))
+  (define cached (hash-ref (prove/down-cache) key 'nothing))
+  (match cached
+    ['in-progress (fail)]
+    [`(done ,v) v]
+    ['nothing (begin
+                (hash-set! (prove/down-cache) key 'in-progress)
+                (define result (%prove/down formula assumptions goal))
+                (hash-set! (prove/down-cache) key `(done ,result))
+                result)]))
+
+(define (%prove/up assumptions goal)
+  (if (amb '(#t #f))
+      (match goal
+        [(? symbol?) (fail)]
+        [(implication a c) (impl-intro a (prove/up (set-add assumptions a) c))]
+        [(conjunction l r) (conj-intro (prove/up assumptions l) (prove/up assumptions r))]
+        [(disjunction l r) (let* ([t (amb (list l r))]
+                                  [disj (if (eq? t l)
+                                            (lambda (v) (disj-intro-l v r))
+                                            (lambda (v) (disj-intro-r l v)))])
+                             (disj (prove/up assumptions t)))])
+      (let ([alpha (amb assumptions)])
+        ((prove/down alpha assumptions goal) (assume alpha)))))
+
+(define (%prove/down formula assumptions goal)
   (match formula
     [(? symbol?) (if (eq? formula goal)
                      (lambda (v) v)
@@ -142,6 +176,10 @@
         [(implication a c) (or (negative? proposition a)
                                (positive? proposition c))])))
 
+;(trace prove)
+;(trace prove/up)
+;(trace prove/down)
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;
 ; Utilities
@@ -159,22 +197,23 @@
 ;
 ; I didn't write (amb). This implementation is from here:
 ; http://matt.might.net/articles/programming-with-continuations--exceptions-backtracking-search-threads-generators-coroutines/
-; (the idea is far, far older)
+; (the idea is a lot older)
 
 (define (current-continuation)
   (call-with-current-continuation
    (lambda (cc)
      (cc cc))))
 
-(define fail-stack '())
+(define fail-stack (make-parameter #f))
 
 (define (fail)
-  (if (not (pair? fail-stack))
-      (error "back-tracking stack exhausted!")
-      (begin
-        (let ((back-track-point (car fail-stack)))
-          (set! fail-stack (cdr fail-stack))
-          (back-track-point back-track-point)))))
+  (cond
+    [(eq? (fail-stack) #f) (error "no fail-stack set up")]
+    [(not (pair? (fail-stack))) (error "back-tracking stack exhausted!")]
+    [else (begin
+            (let ((back-track-point (car (fail-stack))))
+              (fail-stack (cdr (fail-stack)))
+              (back-track-point back-track-point)))]))
 
 (define (amb choices)
   (let ((cc (current-continuation)))
@@ -182,13 +221,18 @@
       ((null? choices)      (fail))
       ((pair? choices)      (let ((choice (car choices)))
                               (set! choices (cdr choices))
-                              (set! fail-stack (cons cc fail-stack))
+                              (fail-stack (cons cc (fail-stack)))
                               choice)))))
 
 (define (assert condition)
   (if (not condition)
       (fail)
       #t))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;
+; Examples
+;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;
@@ -196,28 +240,29 @@
 ;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(trace prove)
-(trace prove/up)
-(trace prove/down)
-
-;(define conj-commutes (prove (list (conjunction 'a (conjunction 'b 'c))) (conjunction (conjunction 'a 'b) 'c)))
-;(define conj-identity (prove (list (conjunction 'a 'b)) (conjunction 'a 'b)))
-;(define currying (prove (list (implication (conjunction 'a 'b) 'c)) (implication 'a (implication 'b 'c))))
-;(define reverse-currying (prove (list (implication 'a (implication 'b 'c))) (implication (conjunction 'a 'b) 'c)))
-
-;(define conj-test-a (prove (list (conjunction 'a (conjunction 'b 'c))) 'a))
-;(define conj-test-b (prove (list (conjunction 'a (conjunction 'b 'c))) 'b))
-;(define conj-test-c (prove (list (conjunction 'a (conjunction 'b 'c))) 'c))
-
-;(define disj-test-1 (prove (list 'a) (disjunction 'a 'b)))
-
-(define (dne f) (((implication (implication (implication f 'bot) 'bot) f))))
+(define (dne f) (implication (implication (implication f 'bot) 'bot) f))
 (define (p6 f) (implication (implication (implication f (implication f 'bot)) 'bot) f))
 
 (define (p8 f) (implication (implication (implication f 'bot) f) f))
 (define (lem f) (disjunction f (implication f 'bot)))
 
-;(prove (list (lem 'a)) (p8 'a))
+;(define conj-commutes (prove (list (conjunction 'a (conjunction 'b 'c))) (conjunction (conjunction 'a 'b) 'c)))
+;(define conj-identity (prove (list (conjunction 'a 'b)) (conjunction 'a 'b)))
+;(define currying (prove (list (implication (conjunction 'a 'b) 'c)) (implication 'a (implication 'b 'c))))
+;(define reverse-currying (prove (list (implication 'a (implication 'b 'c))) (implication (conjunction 'a 'b) 'c)))
+;
+;(define conj-test-a (prove (list (conjunction 'a (conjunction 'b 'c))) 'a))
+;(define conj-test-b (prove (list (conjunction 'a (conjunction 'b 'c))) 'b))
+;(define conj-test-c (prove (list (conjunction 'a (conjunction 'b 'c))) 'c))
+;
+;(define disj-test-1 (prove (list 'a) (disjunction 'a 'b)))
+
+(prove (list (dne (lem 'a))) (lem 'a))
+
+(prove (list (dne 'a)) (p6 'a))
+(prove (list (p6 'a)) (dne 'a))
+
+(prove (list (lem 'a)) (p8 'a))
 (prove (list (p8 (lem 'a))) (lem 'a))
 
 (define (nd-graph proof)
