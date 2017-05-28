@@ -1,0 +1,87 @@
+{(a ^ b)} |- (a ^ b):
+(assume (a ^ b))
+
+{(a ^ (b ^ c))} |- ((a ^ b) ^ c):
+(conj-intro
+ (conj-intro
+  (conj-elim-l (assume (a ^ (b ^ c))))
+  (conj-elim-l (conj-elim-r (assume (a ^ (b ^ c))))))
+ (conj-elim-r (conj-elim-r (assume (a ^ (b ^ c))))))
+
+{((a ^ b) -> c)} |- (a -> (b -> c)):
+(impl-intro
+ 'a
+ (impl-intro
+  'b
+  (impl-elim (assume ((a ^ b) -> c)) (conj-intro (assume 'a) (assume 'b)))))
+
+{(a -> (b -> c))} |- ((a ^ b) -> c):
+(impl-intro
+ (a ^ b)
+ (impl-elim
+  (impl-elim (assume (a -> (b -> c))) (conj-elim-l (assume (a ^ b))))
+  (conj-elim-r (assume (a ^ b)))))
+
+{(a ^ (b ^ c))} |- a:
+(conj-elim-l (assume (a ^ (b ^ c))))
+
+{(a ^ (b ^ c))} |- b:
+(conj-elim-l (conj-elim-r (assume (a ^ (b ^ c)))))
+
+{(a ^ (b ^ c))} |- c:
+(conj-elim-r (conj-elim-r (assume (a ^ (b ^ c)))))
+
+{a} |- (a v b):
+(disj-intro-l (assume 'a) 'b)
+
+{(~~(a v ~a) -> (a v ~a))} |- (a v ~a):
+(impl-elim
+ (assume (~~(a v ~a) -> (a v ~a)))
+ (impl-intro
+  ~(a v ~a)
+  (impl-elim
+   (assume ~(a v ~a))
+   (disj-intro-r
+    'a
+    (impl-intro
+     'a
+     (impl-elim (assume ~(a v ~a)) (disj-intro-l (assume 'a) ~a)))))))
+
+{(~~a -> a)} |- (~(a -> ~a) -> a):
+(impl-intro
+ ~(a -> ~a)
+ (impl-elim
+  (assume (~~a -> a))
+  (impl-intro ~a (impl-elim (assume ~(a -> ~a)) (impl-intro 'a (assume ~a))))))
+
+{(~(a -> ~a) -> a)} |- (~~a -> a):
+(impl-intro
+ ~~a
+ (impl-elim
+  (assume (~(a -> ~a) -> a))
+  (impl-intro
+   (a -> ~a)
+   (impl-elim
+    (assume ~~a)
+    (impl-intro
+     'a
+     (impl-elim (impl-elim (assume (a -> ~a)) (assume 'a)) (assume 'a)))))))
+
+{(a v ~a)} |- ((~a -> a) -> a):
+(impl-intro
+ (~a -> a)
+ (disj-elim
+  (assume (a v ~a))
+  (assume 'a)
+  (impl-elim (assume (~a -> a)) (assume ~a))))
+
+{((~(a v ~a) -> (a v ~a)) -> (a v ~a))} |- (a v ~a):
+(impl-elim
+ (assume ((~(a v ~a) -> (a v ~a)) -> (a v ~a)))
+ (impl-intro
+  ~(a v ~a)
+  (disj-intro-r
+   'a
+   (impl-intro
+    'a
+    (impl-elim (assume ~(a v ~a)) (disj-intro-l (assume 'a) ~a))))))
