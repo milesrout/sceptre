@@ -123,24 +123,25 @@
                 result)]))
 
 (define (%prove/up assumptions goal)
-  (if (amb '(#t #f))
-      (match goal
-        [(? symbol?) (fail)]
-        [(implication a c) (impl-intro a (prove/up (set-add assumptions a) c))]
-        [(conjunction l r) (conj-intro (prove/up assumptions l) (prove/up assumptions r))]
-        [(disjunction l r) (let* ([t (amb (list l r))]
-                                  [disj (if (eq? t l)
-                                            (lambda (v) (disj-intro-l v r))
-                                            (lambda (v) (disj-intro-r l v)))])
-                             (disj (prove/up assumptions t)))])
-      (let ([alpha (amb assumptions)])
-        ((prove/down alpha assumptions goal) (assume alpha)))))
+  (if (set-member? assumptions goal)
+      (assume goal)
+      (if (amb '(#t #f))
+          (match goal
+            [(? symbol?) (fail)]
+            [(implication a c) (impl-intro a (prove/up (set-add assumptions a) c))]
+            [(conjunction l r) (conj-intro (prove/up assumptions l) (prove/up assumptions r))]
+            [(disjunction l r) (let* ([t (amb (list l r))]
+                                      [disj (if (eq? t l)
+                                                (lambda (v) (disj-intro-l v r))
+                                                (lambda (v) (disj-intro-r l v)))])
+                                 (disj (prove/up assumptions t)))])
+          (let ([alpha (amb assumptions)])
+            ((prove/down alpha assumptions goal) (assume alpha))))))
 
 (define (%prove/down formula assumptions goal)
   (match formula
-    [(? symbol?) (if (eq? formula goal)
-                     (lambda (v) v)
-                     (fail))]
+    [(== goal) (lambda (v) v)]
+    [(? symbol?) (fail)]
     [(implication a c) (define d1 (prove/down c assumptions goal))
                        (define d2 (prove/up assumptions a))
                        (lambda (d)
@@ -176,18 +177,12 @@
         [(implication a c) (or (negative? proposition a)
                                (positive? proposition c))])))
 
-;(trace prove)
-;(trace prove/up)
-;(trace prove/down)
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;
 ; Utilities
 ;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-; (disjunction 'a (implication 'a 'b))
-;   --> '(disjunction a (implication a b))
 (define (struct->list s)
   (cond [(struct? s) (map struct->list (vector->list (struct->vector s)))]
         [(symbol? s) (string->symbol (regexp-replace #rx"struct:" (symbol->string s) ""))]
@@ -246,16 +241,16 @@
 (define (p8 f) (implication (implication (implication f 'bot) f) f))
 (define (lem f) (disjunction f (implication f 'bot)))
 
-;(define conj-commutes (prove (list (conjunction 'a (conjunction 'b 'c))) (conjunction (conjunction 'a 'b) 'c)))
-;(define conj-identity (prove (list (conjunction 'a 'b)) (conjunction 'a 'b)))
-;(define currying (prove (list (implication (conjunction 'a 'b) 'c)) (implication 'a (implication 'b 'c))))
-;(define reverse-currying (prove (list (implication 'a (implication 'b 'c))) (implication (conjunction 'a 'b) 'c)))
-;
-;(define conj-test-a (prove (list (conjunction 'a (conjunction 'b 'c))) 'a))
-;(define conj-test-b (prove (list (conjunction 'a (conjunction 'b 'c))) 'b))
-;(define conj-test-c (prove (list (conjunction 'a (conjunction 'b 'c))) 'c))
-;
-;(define disj-test-1 (prove (list 'a) (disjunction 'a 'b)))
+(prove (list (conjunction 'a (conjunction 'b 'c))) (conjunction (conjunction 'a 'b) 'c))
+(prove (list (conjunction 'a 'b)) (conjunction 'a 'b))
+(prove (list (implication (conjunction 'a 'b) 'c)) (implication 'a (implication 'b 'c)))
+(prove (list (implication 'a (implication 'b 'c))) (implication (conjunction 'a 'b) 'c))
+
+(prove (list (conjunction 'a (conjunction 'b 'c))) 'a)
+(prove (list (conjunction 'a (conjunction 'b 'c))) 'b)
+(prove (list (conjunction 'a (conjunction 'b 'c))) 'c)
+
+(prove (list 'a) (disjunction 'a 'b))
 
 (prove (list (dne (lem 'a))) (lem 'a))
 
