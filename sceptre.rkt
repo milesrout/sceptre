@@ -9,9 +9,36 @@
 ;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(struct implication (antecedent consequent) #:transparent)
-(struct conjunction (left right) #:transparent)
-(struct disjunction (left right) #:transparent)
+(struct implication (antecedent consequent)
+  #:transparent
+  #:methods gen:custom-write
+  [(define (write-proc val port mode)
+     (if (eq? (implication-consequent val) 'bot)
+         (fprintf port
+                  "~~~a"
+                  (implication-antecedent val))
+         (fprintf port
+                  "(~a -> ~a)"
+                  (implication-antecedent val)
+                  (implication-consequent val))))])
+
+(struct conjunction (left right)
+  #:transparent
+  #:methods gen:custom-write
+  [(define (write-proc val port mode)
+     (fprintf port
+              "(~a ^ ~a)"
+              (conjunction-left val)
+              (conjunction-right val)))])
+
+(struct disjunction (left right)
+  #:transparent
+  #:methods gen:custom-write
+  [(define (write-proc val port mode)
+     (fprintf port
+              "(~a v ~a)"
+              (disjunction-left val)
+              (disjunction-right val)))])
 
 ;  
 ;  A
@@ -86,11 +113,17 @@
 ;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define (prove assumptions goal)
+(require compatibility/mlist)
+(define (prove goal #:from assumptions)
+  (printf "~a |- ~a:~n~a~n~n"
+          (list->mlist assumptions) goal
+          (pretty-format (%prove goal #:from assumptions) #:mode 'print)))
+
+(define (%prove goal #:from assumptions)
   (parameterize ([fail-stack '()]
                  [prove/up-cache (make-hash)]
                  [prove/down-cache (make-hash)])
-    (struct->list (prove/up assumptions goal))))
+    (prove/up assumptions goal)))
 
 (define prove/up-cache
   (make-parameter #f))
@@ -241,24 +274,25 @@
 (define (p8 f) (implication (implication (implication f 'bot) f) f))
 (define (lem f) (disjunction f (implication f 'bot)))
 
-(prove (list (conjunction 'a (conjunction 'b 'c))) (conjunction (conjunction 'a 'b) 'c))
-(prove (list (conjunction 'a 'b)) (conjunction 'a 'b))
-(prove (list (implication (conjunction 'a 'b) 'c)) (implication 'a (implication 'b 'c)))
-(prove (list (implication 'a (implication 'b 'c))) (implication (conjunction 'a 'b) 'c))
+(prove (conjunction 'a 'b) #:from (list (conjunction 'a 'b)))
 
-(prove (list (conjunction 'a (conjunction 'b 'c))) 'a)
-(prove (list (conjunction 'a (conjunction 'b 'c))) 'b)
-(prove (list (conjunction 'a (conjunction 'b 'c))) 'c)
+(prove (conjunction (conjunction 'a 'b) 'c) #:from (list (conjunction 'a (conjunction 'b 'c))))
+(prove (implication 'a (implication 'b 'c)) #:from (list (implication (conjunction 'a 'b) 'c)))
+(prove (implication (conjunction 'a 'b) 'c) #:from (list (implication 'a (implication 'b 'c))) )
 
-(prove (list 'a) (disjunction 'a 'b))
+(prove 'a #:from (list (conjunction 'a (conjunction 'b 'c))))
+(prove 'b #:from (list (conjunction 'a (conjunction 'b 'c))))
+(prove 'c #:from (list (conjunction 'a (conjunction 'b 'c))))
 
-(prove (list (dne (lem 'a))) (lem 'a))
+(prove (disjunction 'a 'b) #:from '(a))
 
-(prove (list (dne 'a)) (p6 'a))
-(prove (list (p6 'a)) (dne 'a))
+(prove (lem 'a) #:from (list (dne (lem 'a))) )
 
-(prove (list (lem 'a)) (p8 'a))
-(prove (list (p8 (lem 'a))) (lem 'a))
+(prove (p6 'a) #:from (list (dne 'a)))
+(prove (dne 'a) #:from (list (p6 'a)))
+
+(prove (p8 'a) #:from (list (lem 'a)))
+(prove (lem 'a) #:from (list (p8 (lem 'a))))
 
 (define (nd-graph proof)
   (unweighted-graph/directed '()))
